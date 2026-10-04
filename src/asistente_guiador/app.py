@@ -1,6 +1,7 @@
 import asyncio
 import logging
 
+from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtWidgets import QApplication
 
 from asistente_guiador.ai.providers.groq_provider import GroqLLMProvider
@@ -19,6 +20,17 @@ from asistente_guiador.vision.capture import MSSScreenCapturer
 logger = logging.getLogger("asistente_guiador")
 
 
+class AppSignals(QObject):
+    """
+    Canal de señales Qt para comunicación segura entre hilos.
+    Garantiza que cualquier modificación de UI se ejecute en el hilo principal.
+    """
+
+    show_hint = pyqtSignal(str, int)  # mensaje, duracion_ms
+    show_highlight = pyqtSignal(object, str)  # BoundingBox, spatial_hint
+    clear_highlight = pyqtSignal()
+
+
 class AsistenteApp:
     """Aplicación principal que conecta GUI (PyQt6), audio, orquestador y bucle de escucha."""
 
@@ -27,7 +39,7 @@ class AsistenteApp:
         self.settings = Settings()
         self._running = True
 
-        # 1. Overlay y banner de degradación visual
+        # 1. Overlay y banner de degradación visual en hilo principal
         self.overlay = TransparentOverlayWidget()
         self.fallback_banner = FloatingHintBanner()
 
@@ -37,7 +49,13 @@ class AsistenteApp:
             self.overlay.setGeometry(geo)
             self.overlay.show()
 
-        # 2. Puertos de Audio, Visión y LLM
+        # 2. Canal de señales entre el hilo de audio y los widgets de interfaz
+        self.signals = AppSignals()
+        self.signals.show_hint.connect(self._handle_show_hint)
+        self.signals.show_highlight.connect(self._handle_show_highlight)
+        self.signals.clear_highlight.connect(self._handle_clear_highlight)
+
+        # 3. Puertos de Audio, Visión y LLM
         self.llm = GroqLLMProvider(
             api_key=self.settings.groq_api_key,
             model=self.settings.groq_model,
@@ -53,14 +71,14 @@ class AsistenteApp:
             silence_threshold_energy=self.settings.wake_word_energy_threshold
         )
 
-        # Detector de Wake Word dedicado: sólo activa la escucha cuando se dice la palabra clave
+        # Detector de Wake Word dedicado
         self.wake_detector = WakeWordAudioListener(
             stt_provider=self.stt,
             wake_word=self.settings.wake_word,
             energy_threshold=self.settings.wake_word_energy_threshold,
         )
 
-        # 3. Orquestador
+        # 4. Orquestador
         self.coordinator = AssistanceCoordinator(
             llm_provider=self.llm,
             vision_provider=self.vision,
@@ -71,27 +89,39 @@ class AsistenteApp:
         # Inicializar contexto de pantalla base
         self.coordinator.initialize_visual_context()
 
-        # 4. Bandeja del sistema (Tray)
+        # 5. Bandeja del sistema (Tray)
         self.tray = SystemTrayManager(self)
         self.tray.show()
 
+    def _handle_show_hint(self, message: str, duration_ms: int) -> None:
+        """Slot ejecutado en el hilo principal de Qt para mostrar banners."""
+        self.fallback_banner.show_hint(message, duration_ms=duration_ms)
+
+    def _handle_show_highlight(self, bbox: object, spatial_hint: str) -> None:
+        """Slot ejecutado en el hilo principal de Qt para pintar el halo."""
+        self.overlay.set_target_bbox(bbox, spatial_hint=spatial_hint)
+
+    def _handle_clear_highlight(self) -> None:
+        """Slot ejecutado en el hilo principal de Qt para limpiar el halo."""
+        self.overlay.clear_highlight()
+
     async def process_user_query(self, user_query: str) -> None:
         """Ejecuta un ciclo de consulta, pinta el halo y muestra apoyo textual."""
-        logger.info(f"Procesando: '{user_query}'")
+        logger.info(f"Procesando consulta: '{user_query}'")
         resp = await self.coordinator.handle_user_request(user_query)
 
-        # Si hay coordenadas fiables (Nivel A), dibujar halo
+        # Si hay coordenadas fiables (Nivel A), emitir señal para dibujar halo
         if resp.visual_highlight:
-            self.overlay.set_target_bbox(
+            self.signals.show_highlight.emit(
                 resp.visual_highlight,
-                spatial_hint=resp.spatial_description,
+                resp.spatial_description or "",
             )
         else:
-            self.overlay.clear_highlight()
+            self.signals.clear_highlight.emit()
 
-        # Nivel B/C: mostrar banner de texto grande si aplica
+        # Nivel B/C: emitir señal para mostrar banner de texto grande si aplica
         if resp.spoken_text:
-            self.fallback_banner.show_hint(resp.spoken_text, duration_ms=8000)
+            self.signals.show_hint.emit(resp.spoken_text, 8000)
 
     def stop(self) -> None:
         """Detiene de forma limpia todos los componentes y bucles."""
@@ -132,10 +162,11 @@ class AsistenteApp:
             if not wake_detected or not self.wake_detector.is_listening():
                 continue
 
-            # 2. Indicar que el asistente está escuchando activamente
+            # 2. Indicar que el asistente está escuchando activamente (vía señal thread-safe)
             logger.info("✨ ¡Wake word detectado! Escuchando orden del usuario...")
-            self.fallback_banner.show_hint("🎤 Te escucho, dime qué necesitas...", duration_ms=3000)
+            self.signals.show_hint.emit("🎤 Te escucho, dime qué necesitas...", 3000)
             await self.tts.speak("Sí, te escucho.")
+            await asyncio.sleep(0.3)
 
             # 3. Grabar la intervención del usuario con tolerancia a pausas (1.8s)
             audio_bytes = await self.recorder.record_phrase_async()
@@ -143,6 +174,10 @@ class AsistenteApp:
                 break
             if not audio_bytes:
                 logger.info("No se capturó audio tras la activación.")
+                self.signals.show_hint.emit(
+                    f"ℹ️ No alcancé a escucharte. Vuelve a decir '{self.settings.wake_word}'.",
+                    3000,
+                )
                 continue
 
             # 4. Transcribir orden a texto
@@ -157,4 +192,3 @@ class AsistenteApp:
 
             # 5. Procesar consulta en la sesión continua de chat
             await self.process_user_query(text)
-
