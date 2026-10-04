@@ -4,13 +4,12 @@ import pytest
 
 from asistente_guiador.audio.stt import GroqWhisperSTTProvider
 from asistente_guiador.audio.tts import PiperTTSProvider
-from asistente_guiador.audio.wakeword import SimpleWakeWordDetector
+from asistente_guiador.audio.wakeword import EnergyWakeWordDetector
 
 
 @pytest.mark.asyncio
 async def test_piper_tts_fallback_speak():
     provider = PiperTTSProvider(piper_path="nonexistent_piper_binary")
-    # No debe fallar; invoca el fallback de sistema o simulado
     with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
         mock_proc = AsyncMock()
         mock_proc.wait = AsyncMock()
@@ -37,12 +36,13 @@ async def test_groq_whisper_transcription():
 
 
 @pytest.mark.asyncio
-async def test_wakeword_pause_and_resume():
-    detector = SimpleWakeWordDetector(wake_word="hey asistente")
-    assert await detector.wait_for_wake_word() is True
+async def test_energy_wakeword_pause_and_resume():
+    detector = EnergyWakeWordDetector()
+    assert detector.is_listening() is True
 
     detector.pause()
-    assert await detector.wait_for_wake_word() is False
+    assert detector.is_listening() is False
+    assert await detector.wait_for_speech() is False
 
     detector.resume()
-    assert await detector.wait_for_wake_word() is True
+    assert detector.is_listening() is True

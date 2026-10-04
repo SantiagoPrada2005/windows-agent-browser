@@ -15,6 +15,7 @@ dependencies = [
     "pyqt6>=6.11.0",
     "scipy>=1.17.1",
     "sounddevice>=0.5.6",
+    "speechrecognition>=3.17.0",
 ]
 
 [project.scripts]
