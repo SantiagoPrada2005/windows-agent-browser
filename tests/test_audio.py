@@ -58,3 +58,32 @@ async def test_wakeword_detection_match():
         detected = await listener.wait_for_wake_word()
 
     assert detected is True
+
+
+def test_wakeword_record_audio_window_with_sounddevice():
+    import numpy as np
+    mock_stt = AsyncMock()
+    listener = WakeWordAudioListener(
+        stt_provider=mock_stt,
+        wake_word="hey asistente",
+        sample_rate=16000,
+        energy_threshold=0.02,
+        window_seconds=1.0,
+    )
+
+    # 1. Simular silencio: array numpy con ceros devuelto directamente por sd.rec
+    silence_array = np.zeros((16000, 1), dtype=np.float32)
+    with patch("asistente_guiador.audio.wakeword.sd") as mock_sd:
+        mock_sd.rec.return_value = silence_array
+        wav = listener._record_audio_window()
+        assert wav is None
+
+    # 2. Simular audio con voz: array con energía > threshold
+    voice_array = np.ones((16000, 1), dtype=np.float32) * 0.1
+    with patch("asistente_guiador.audio.wakeword.sd") as mock_sd:
+        mock_sd.rec.return_value = voice_array
+        wav = listener._record_audio_window()
+        assert wav is not None
+        assert isinstance(wav, bytes)
+        assert wav.startswith(b"RIFF")
+
