@@ -59,8 +59,8 @@ class WakeWordAudioListener:
             return None
 
         try:
-            # Graba exactamente una ventana corta
-            audio_data, _ = sd.rec(
+            # sd.rec devuelve directamente el array numpy (no una tupla)
+            audio_data = sd.rec(
                 frames=self.window_samples,
                 samplerate=self.sample_rate,
                 channels=1,
