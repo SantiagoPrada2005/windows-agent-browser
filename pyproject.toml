@@ -1,0 +1,45 @@
+[project]
+name = "asistente-guiador"
+version = "0.1.0"
+description = "Asistente Guiador de Ofimatica para Adultos Mayores (MVP)"
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "httpx>=0.28.1",
+    "mss>=10.2.0",
+    "numpy>=2.4.6",
+    "opencv-python-headless>=5.0.0.93",
+    "pillow>=12.3.0",
+    "pydantic>=2.13.5",
+    "pydantic-settings>=2.15.0",
+    "pyqt6>=6.11.0",
+    "scipy>=1.17.1",
+    "sounddevice>=0.5.6",
+]
+
+[project.scripts]
+asistente-guiador = "asistente_guiador.main:main"
+
+[build-system]
+requires = ["uv_build>=0.12.23,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "ruff>=0.16.10",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP"]
+ignore = []
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+pythonpath = ["src"]
