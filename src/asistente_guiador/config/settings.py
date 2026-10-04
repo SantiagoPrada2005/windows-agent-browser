@@ -22,5 +22,6 @@ class Settings(BaseSettings):
     screen_check_height: int = 360
 
     # Audio y Wake word
-    wake_word: str = "hey asistente"
+    wake_word: str = "Sofia"
     stt_language: str = "es"
+    wake_word_energy_threshold: float = 0.008

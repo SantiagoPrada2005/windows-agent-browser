@@ -49,12 +49,15 @@ class AsistenteApp:
         self.capturer = MSSScreenCapturer()
         self.tts = PiperTTSProvider()
         self.stt = GroqWhisperSTTProvider(api_key=self.settings.groq_api_key)
-        self.recorder = VoiceActivityRecorder()
+        self.recorder = VoiceActivityRecorder(
+            silence_threshold_energy=self.settings.wake_word_energy_threshold
+        )
 
         # Detector de Wake Word dedicado: sólo activa la escucha cuando se dice la palabra clave
         self.wake_detector = WakeWordAudioListener(
             stt_provider=self.stt,
             wake_word=self.settings.wake_word,
+            energy_threshold=self.settings.wake_word_energy_threshold,
         )
 
         # 3. Orquestador
@@ -90,10 +93,25 @@ class AsistenteApp:
         if resp.spoken_text:
             self.fallback_banner.show_hint(resp.spoken_text, duration_ms=8000)
 
+    def stop(self) -> None:
+        """Detiene de forma limpia todos los componentes y bucles."""
+        if not self._running:
+            return
+        logger.info("Deteniendo componentes de AsistenteApp...")
+        self._running = False
+        if hasattr(self, "wake_detector"):
+            self.wake_detector.stop()
+        if hasattr(self, "tray"):
+            self.tray.hide()
+        if hasattr(self, "overlay"):
+            self.overlay.close()
+        if hasattr(self, "fallback_banner"):
+            self.fallback_banner.close()
+
     async def listen_loop(self) -> None:
         """
         Bucle continuo en segundo plano:
-        1. Permanece en espera escuchando localmente por el Wake Word ("hey asistente").
+        1. Permanece en espera escuchando localmente por el Wake Word ("Sofia" / "hey asistente").
         2. ÚNICAMENTE tras detectar el Wake Word, abre la escucha activa para capturar la orden.
         3. Procesa la petición como un turno de chat continuo.
         4. Regresa inmediatamente al bucle de espera por el siguiente Wake Word.
@@ -109,6 +127,8 @@ class AsistenteApp:
 
             # 1. Esperar exclusivamente a que se pronuncie la palabra de activación
             wake_detected = await self.wake_detector.wait_for_wake_word()
+            if not self._running:
+                break
             if not wake_detected or not self.wake_detector.is_listening():
                 continue
 
@@ -119,12 +139,16 @@ class AsistenteApp:
 
             # 3. Grabar la intervención del usuario con tolerancia a pausas (1.8s)
             audio_bytes = await self.recorder.record_phrase_async()
+            if not self._running:
+                break
             if not audio_bytes:
                 logger.info("No se capturó audio tras la activación.")
                 continue
 
             # 4. Transcribir orden a texto
             text = await self.stt.transcribe(audio_bytes)
+            if not self._running:
+                break
             if not text or len(text.strip()) < 2:
                 logger.info("Transcripción vacía o inaudible.")
                 continue
@@ -133,3 +157,4 @@ class AsistenteApp:
 
             # 5. Procesar consulta en la sesión continua de chat
             await self.process_user_query(text)
+
