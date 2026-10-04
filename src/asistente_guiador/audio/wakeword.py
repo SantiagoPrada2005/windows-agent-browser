@@ -1,5 +1,7 @@
 import asyncio
+import io
 import logging
+import wave
 
 import numpy as np
 
@@ -8,63 +10,105 @@ try:
 except (ImportError, OSError):
     sd = None
 
+from asistente_guiador.core.interfaces import STTProvider
+
 logger = logging.getLogger(__name__)
 
 
-class EnergyWakeWordDetector:
+class WakeWordAudioListener:
     """
-    Detector de activación por voz / Wake Word para el bucle en segundo plano.
-    Escucha de forma continua y ligera en el micrófono:
-    1. Monitorea bloques de audio con sounddevice.
-    2. Cuando detecta energía de voz por encima del umbral de ruido ambiente,
-       activa la captura de la frase completa del usuario.
-    3. Permite pausar/reanudar desde el System Tray.
+    Detector continuo de Wake Word ("hey asistente"):
+    - Escucha audio localmente en ventanas continuas de ~2.0 segundos.
+    - Sólo cuando el audio supera el umbral de energía de voz, se transcribe.
+    - Comprueba si el texto contiene la palabra de activación configurada.
+    - Únicamente tras confirmar el Wake Word, dispara la activación del asistente.
+    - No transmite audio si está pausado o en silencio absoluto.
     """
 
     def __init__(
         self,
+        stt_provider: STTProvider,
+        wake_word: str = "hey asistente",
         sample_rate: int = 16000,
         energy_threshold: float = 0.02,
-        block_duration_ms: int = 200,
+        window_seconds: float = 2.0,
     ):
+        self.stt = stt_provider
+        self.wake_word = wake_word.lower()
         self.sample_rate = sample_rate
         self.energy_threshold = energy_threshold
-        self.block_size = int(sample_rate * (block_duration_ms / 1000.0))
+        self.window_samples = int(sample_rate * window_seconds)
         self._is_listening = True
 
     def pause(self) -> None:
-        """Pausa la escucha desde la bandeja."""
+        """Pausa la detección desde la bandeja."""
         self._is_listening = False
-        logger.info("Detector de activación: PAUSADO")
+        logger.info("Detector de Wake Word: PAUSADO")
 
     def resume(self) -> None:
-        """Reanuda la escucha."""
+        """Reanuda la detección."""
         self._is_listening = True
-        logger.info("Detector de activación: REANUDADO")
+        logger.info("Detector de Wake Word: REANUDADO")
 
     def is_listening(self) -> bool:
         return self._is_listening
 
-    def wait_for_speech_sync(self) -> bool:
-        """Bloquea hasta que detecta voz sobre el micrófono o se pausa."""
+    def _record_audio_window(self) -> bytes | None:
+        """Captura una ventana de audio local y comprueba si hay energía de habla."""
         if sd is None or not self._is_listening:
-            return False
+            return None
 
         try:
-            with sd.InputStream(samplerate=self.sample_rate, channels=1, dtype="float32") as stream:
-                while self._is_listening:
-                    chunk, _ = stream.read(self.block_size)
-                    energy = float(np.sqrt(np.mean(chunk**2)))
-                    if energy > self.energy_threshold:
-                        logger.info(f"Voz detectada: {energy:.3f} > {self.energy_threshold}")
-                        return True
-        except Exception as e:
-            logger.warning(f"Error en stream de audio: {e}")
-        return False
+            # Graba exactamente una ventana corta
+            audio_data, _ = sd.rec(
+                frames=self.window_samples,
+                samplerate=self.sample_rate,
+                channels=1,
+                dtype="float32",
+                blocking=True,
+            )
+            # Calcular energía RMS
+            energy = float(np.sqrt(np.mean(audio_data**2)))
+            if energy < self.energy_threshold:
+                return None  # Silencio ambiente, no gastar llamadas STT
 
-    async def wait_for_speech(self) -> bool:
-        """Espera de forma no bloqueante a que el usuario empiece a hablar."""
-        if not self._is_listening:
-            await asyncio.sleep(0.5)
-            return False
-        return await asyncio.to_thread(self.wait_for_speech_sync)
+            # Convertir a WAV
+            audio_int16 = (audio_data * 32767).astype(np.int16)
+            wav_buffer = io.BytesIO()
+            with wave.open(wav_buffer, "wb") as wf:
+                wf.setnchannels(1)
+                wf.setsampwidth(2)
+                wf.setframerate(self.sample_rate)
+                wf.writeframes(audio_int16.tobytes())
+
+            return wav_buffer.getvalue()
+        except Exception as e:
+            logger.warning(f"Error capturando ventana de audio: {e}")
+            return None
+
+    async def wait_for_wake_word(self) -> bool:
+        """
+        Bucle no bloqueante que evalúa si el usuario pronunció el Wake Word.
+        Devuelve True únicamente tras confirmar la palabra clave.
+        """
+        while self._is_listening:
+            wav_bytes = await asyncio.to_thread(self._record_audio_window)
+            if not wav_bytes:
+                await asyncio.sleep(0.1)
+                continue
+
+            # Transcribir fragmento para verificar palabra clave
+            text = await self.stt.transcribe(wav_bytes)
+            if not text:
+                continue
+
+            clean = text.lower().strip()
+            logger.debug(f"Detector WakeWord escuchó: '{clean}'")
+
+            # Comprobar variantes de activación: 'hey asistente', 'asistente', 'oye asistente'
+            target_words = [self.wake_word, "asistente", "oye asistente", "hola asistente"]
+            if any(w in clean for w in target_words):
+                logger.info(f"✨ ¡WAKE WORD DETECTADO!: '{clean}'")
+                return True
+
+        return False

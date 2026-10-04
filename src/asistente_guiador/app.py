@@ -8,7 +8,7 @@ from asistente_guiador.ai.providers.vision_provider import OpenRouterVisionProvi
 from asistente_guiador.audio.recorder import VoiceActivityRecorder
 from asistente_guiador.audio.stt import GroqWhisperSTTProvider
 from asistente_guiador.audio.tts import PiperTTSProvider
-from asistente_guiador.audio.wakeword import EnergyWakeWordDetector
+from asistente_guiador.audio.wakeword import WakeWordAudioListener
 from asistente_guiador.config.settings import Settings
 from asistente_guiador.core.coordinator import AssistanceCoordinator
 from asistente_guiador.overlay.fallback_hint import FloatingHintBanner
@@ -50,7 +50,12 @@ class AsistenteApp:
         self.tts = PiperTTSProvider()
         self.stt = GroqWhisperSTTProvider(api_key=self.settings.groq_api_key)
         self.recorder = VoiceActivityRecorder()
-        self.wake_detector = EnergyWakeWordDetector()
+
+        # Detector de Wake Word dedicado: sólo activa la escucha cuando se dice la palabra clave
+        self.wake_detector = WakeWordAudioListener(
+            stt_provider=self.stt,
+            wake_word=self.settings.wake_word,
+        )
 
         # 3. Orquestador
         self.coordinator = AssistanceCoordinator(
@@ -59,6 +64,9 @@ class AsistenteApp:
             screen_capturer=self.capturer,
             tts_provider=self.tts,
         )
+
+        # Inicializar contexto de pantalla base
+        self.coordinator.initialize_visual_context()
 
         # 4. Bandeja del sistema (Tray)
         self.tray = SystemTrayManager(self)
@@ -84,48 +92,44 @@ class AsistenteApp:
 
     async def listen_loop(self) -> None:
         """
-        Bucle continuo en segundo plano (Wake Word + STT + Asistencia):
-        1. Espera a que el usuario empiece a hablar.
-        2. Graba la frase completa respetando pausas.
-        3. Transcribe el audio con Groq Whisper.
-        4. Si detecta la palabra clave o consulta directa, ejecuta la asistencia.
+        Bucle continuo en segundo plano:
+        1. Permanece en espera escuchando localmente por el Wake Word ("hey asistente").
+        2. ÚNICAMENTE tras detectar el Wake Word, abre la escucha activa para capturar la orden.
+        3. Procesa la petición como un turno de chat continuo.
+        4. Regresa inmediatamente al bucle de espera por el siguiente Wake Word.
         """
-        logger.info("🎤 Bucle de escucha continua activado. Esperando voz...")
+        logger.info(
+            f"🎤 Bucle de escucha continuo activo. Di '{self.settings.wake_word}' para activar."
+        )
+
         while self._running:
             if not self.wake_detector.is_listening():
                 await asyncio.sleep(0.5)
                 continue
 
-            # 1. Esperar activación de voz
-            speech_started = await self.wake_detector.wait_for_speech()
-            if not speech_started or not self.wake_detector.is_listening():
+            # 1. Esperar exclusivamente a que se pronuncie la palabra de activación
+            wake_detected = await self.wake_detector.wait_for_wake_word()
+            if not wake_detected or not self.wake_detector.is_listening():
                 continue
 
-            # 2. Grabar frase con tolerancia a silencios (1.8s)
-            logger.info("Grabando pregunta del usuario...")
+            # 2. Indicar que el asistente está escuchando activamente
+            logger.info("✨ ¡Wake word detectado! Escuchando orden del usuario...")
+            self.fallback_banner.show_hint("🎤 Te escucho, dime qué necesitas...", duration_ms=3000)
+            await self.tts.speak("Sí, te escucho.")
+
+            # 3. Grabar la intervención del usuario con tolerancia a pausas (1.8s)
             audio_bytes = await self.recorder.record_phrase_async()
             if not audio_bytes:
+                logger.info("No se capturó audio tras la activación.")
                 continue
 
-            # 3. Transcribir a texto con Whisper
-            logger.info("Transcribiendo orden...")
+            # 4. Transcribir orden a texto
             text = await self.stt.transcribe(audio_bytes)
-            if not text or len(text.strip()) < 3:
+            if not text or len(text.strip()) < 2:
+                logger.info("Transcripción vacía o inaudible.")
                 continue
 
-            logger.info(f"Transcripción recibida: '{text}'")
+            logger.info(f"🗣️ Pregunta del usuario recibida: '{text}'")
 
-            # 4. Comprobar palabra clave o atender consulta directa
-            clean_text = text.lower()
-            wake_word = self.settings.wake_word.lower()
-
-            if wake_word in clean_text:
-                # Quitar wake word para dejar la orden limpia
-                clean_query = clean_text.replace(wake_word, "").strip(" ,.¡!¿?")
-                if not clean_query:
-                    await self.tts.speak("Sí, te escucho. ¿Qué necesitas hacer?")
-                    continue
-                await self.process_user_query(clean_query)
-            else:
-                # Si la frase parece una orden ofimática directa
-                await self.process_user_query(text)
+            # 5. Procesar consulta en la sesión continua de chat
+            await self.process_user_query(text)

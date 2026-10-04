@@ -76,13 +76,14 @@ class GroqLLMProvider(LLMProvider):
     async def classify_intent(
         self,
         user_query: str,
-        session_context: str | None = None,
+        session_context: list[dict] | None = None,
     ) -> IntentResult:
         messages = [
             {"role": "system", "content": INTENT_ROUTER_SYSTEM_PROMPT},
         ]
         if session_context:
-            messages.append({"role": "system", "content": f"Contexto: {session_context}"})
+            context_summary = json.dumps(session_context[-4:], ensure_ascii=False)
+            messages.append({"role": "system", "content": f"Historial previo: {context_summary}"})
         messages.append({"role": "user", "content": user_query})
 
         try:
@@ -113,17 +114,35 @@ class GroqLLMProvider(LLMProvider):
         self,
         intent: IntentResult,
         visual_result: VisualElementResult | None = None,
-        session_context: str | None = None,
+        conversation_history: list[dict] | None = None,
+        initial_context: str | None = None,
     ) -> GuidanceResponse:
         messages = [
             {"role": "system", "content": GUIDANCE_RESPONSE_SYSTEM_PROMPT},
         ]
+
+        if initial_context:
+            messages.append(
+                {
+                    "role": "system",
+                    "content": f"Contexto visual inicial de la pantalla activa: {initial_context}",
+                }
+            )
+
+        # Inyectar turnos previos de chat para coherencia conversacional
+        if conversation_history:
+            for turn in conversation_history[-4:]:
+                messages.append({"role": "user", "content": turn.get("user", "")})
+                messages.append({"role": "assistant", "content": turn.get("assistant", "")})
+
         context_payload = {
-            "user_intent": intent.model_dump(),
+            "current_intent": intent.model_dump(),
             "visual_result": visual_result.model_dump() if visual_result else None,
-            "session_context": session_context,
         }
-        user_prompt = f"Genera la indicación considerando: {json.dumps(context_payload)}"
+        user_prompt = (
+            f"El usuario dice: '{intent.raw_query}'. "
+            f"Datos del turno actual: {json.dumps(context_payload, ensure_ascii=False)}"
+        )
         messages.append({"role": "user", "content": user_prompt})
 
         try:

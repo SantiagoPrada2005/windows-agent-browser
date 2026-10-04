@@ -21,7 +21,12 @@ logger = logging.getLogger(__name__)
 
 
 class AssistanceCoordinator:
-    """Orquestador principal del flujo del asistente con inferencia adaptativa."""
+    """
+    Orquestador principal del flujo del asistente con:
+    - Contexto visual inicial de pantalla siempre presente.
+    - Manejo de sesión tipo chat continuo.
+    - Inferencia adaptativa para ahorrar llamadas remotas.
+    """
 
     def __init__(
         self,
@@ -38,10 +43,28 @@ class AssistanceCoordinator:
         self.tts = tts_provider
         self.session = session_state or SessionState()
         self.change_detector = change_detector or ScreenChangeDetector()
+        self._initial_screen_context: str | None = None
+
+    def initialize_visual_context(self) -> None:
+        """Captura inicial de pantalla para fijar el contexto de la aplicación activa."""
+        try:
+            initial_screen = self.capturer.capture_active_screen()
+            self.session.update_screenshot(initial_screen)
+            self._initial_screen_context = (
+                f"Resolución de pantalla: {initial_screen.width}x{initial_screen.height}. "
+                "Captura base registrada para comparación de cambios."
+            )
+            logger.info("Contexto visual inicial de pantalla registrado con éxito.")
+        except Exception as e:
+            logger.warning(f"No se pudo inicializar contexto visual: {e}")
 
     async def handle_user_request(self, user_text: str) -> GuidanceResponse:
-        """Punto de entrada cuando se transcribe una orden de voz del usuario."""
-        logger.info(f"Procesando petición del usuario: '{user_text}'")
+        """Punto de entrada cuando se transcribe una orden del usuario tras el wake word."""
+        logger.info(f"Procesando petición en sesión de chat: '{user_text}'")
+
+        # 0. Asegurar contexto inicial si no se hizo previamente
+        if self.session.last_screenshot is None:
+            self.initialize_visual_context()
 
         # 1. Manejo inmediato de repetición
         clean_text = unicodedata.normalize("NFD", user_text)
@@ -53,24 +76,19 @@ class AssistanceCoordinator:
                 await self.tts.speak(response.spoken_text)
                 return response
 
-        # 2. Clasificación de intención con LLM rápido
-        history_context = (
-            str(self.session.conversation_history[-2:])
-            if self.session.conversation_history
-            else None
-        )
+        # 2. Clasificación de intención con contexto de la conversación
         intent_result: IntentResult = await self.llm.classify_intent(
             user_text,
-            session_context=history_context,
+            session_context=self.session.conversation_history,
         )
         self.session.last_intent = intent_result
 
         # 3. Flujo condicional: ¿Requiere contexto visual?
         visual_result: VisualElementResult | None = None
-        if intent_result.requires_visual_context and intent_result.target:
-            current_screen: Image.Image = self.capturer.capture_active_screen()
-            has_changed = self.change_detector.has_significant_change(current_screen)
+        current_screen: Image.Image = self.capturer.capture_active_screen()
+        has_changed = self.change_detector.has_significant_change(current_screen)
 
+        if intent_result.requires_visual_context and intent_result.target:
             if (
                 not has_changed
                 and self.session.last_visual_result
@@ -83,17 +101,24 @@ class AssistanceCoordinator:
                 visual_result = await self.vision.analyze_screen(
                     current_screen,
                     target_description=intent_result.target,
+                    context=f"Última app conocida: {self.session.active_application}",
                 )
                 self.session.update_screenshot(current_screen)
                 self.session.last_visual_result = visual_result
+                if visual_result.application:
+                    self.session.active_application = visual_result.application
+        else:
+            self.session.update_screenshot(current_screen)
 
-        # 4. Generación de respuesta guiada adaptada
+        # 4. Generación de respuesta guiada manteniendo el hilo del chat
         response: GuidanceResponse = await self.llm.generate_response(
             intent=intent_result,
             visual_result=visual_result,
+            conversation_history=self.session.conversation_history,
+            initial_context=self._initial_screen_context,
         )
 
-        # 5. Actualización de estado y reproducción verbal
+        # 5. Guardar en memoria de sesión tipo chat y reproducir verbalmente
         self.session.last_guidance = response
         self.session.record_interaction(user_text, response.spoken_text)
         await self.tts.speak(response.spoken_text)

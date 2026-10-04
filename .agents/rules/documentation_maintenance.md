@@ -1,7 +1,11 @@
-# Regla: Mantenimiento y Sincronización de Documentación Escalonada
+# Regla: Mantenimiento, Sincronización y Navegación Escalonada por Índices
 
-## 1. Principio Rector: Documentación como Código Vivo
-Toda alteración funcional, adición de nuevos módulos, modificación de esquemas de datos o refactorización arquitectónica **debe actualizar de forma inmediata y atómica la documentación escalonada del proyecto**. Ningún desarrollo se considera completo si introduce discrepancias con la documentación.
+## 1. Principio Rector: Documentación como Código Vivo y Guía de Navegación
+- **Sincronización Continua**: Toda alteración funcional, adición de nuevos módulos, modificación de esquemas de datos o refactorización arquitectónica **debe actualizar de forma inmediata y atómica la documentación escalonada del proyecto**. Ningún desarrollo se considera completo si introduce discrepancias con la documentación.
+- **Navegación Obligatoria Primero por Índices (*Index-First Navigation*)**: Al explorar, investigar o ubicar componentes y responsabilidades en el repositorio, **está estrictamente ordenado leer primero los archivos `index.md` pertinentes en lugar de inspeccionar archivos de código directamente**.
+  - Se debe comenzar consultando el `index.md` del nivel superior o del módulo de interés para entender responsabilidades, flujos y arquitectura.
+  - Solo se deben abrir y leer los archivos fuente (`.py`, etc.) puntuales **cuando sea estrictamente necesario** (para implementar un cambio, editar código, verificar una línea específica o realizar debugging concreto).
+  - Queda prohibido inspeccionar archivos de código a ciegas o hacer barridos masivos de código fuente sin haber consultado primero el mapa de los `index.md`.
 
 ---
 

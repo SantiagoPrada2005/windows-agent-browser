@@ -29,7 +29,6 @@ class DummyCapturer(ScreenCapturer):
 
 @pytest.mark.asyncio
 async def test_coordinator_locate_element_flow():
-    # Mocks
     mock_llm = AsyncMock(spec=LLMProvider)
     mock_vision = AsyncMock(spec=VisionProvider)
     mock_tts = AsyncMock(spec=TTSProvider)
@@ -69,6 +68,36 @@ async def test_coordinator_locate_element_flow():
 
 
 @pytest.mark.asyncio
+async def test_coordinator_chat_history_continuity():
+    mock_llm = AsyncMock(spec=LLMProvider)
+    mock_vision = AsyncMock(spec=VisionProvider)
+    mock_tts = AsyncMock(spec=TTSProvider)
+    capturer = DummyCapturer()
+
+    coordinator = AssistanceCoordinator(
+        llm_provider=mock_llm,
+        vision_provider=mock_vision,
+        screen_capturer=capturer,
+        tts_provider=mock_tts,
+    )
+
+    mock_llm.classify_intent.return_value = IntentResult(
+        intent=IntentType.EXPLAIN_ACTION,
+        target="guardar",
+    )
+    mock_llm.generate_response.return_value = GuidanceResponse(spoken_text="Paso 1 completado.")
+
+    await coordinator.handle_user_request("Paso 1")
+    assert len(coordinator.session.conversation_history) == 1
+
+    mock_llm.generate_response.return_value = GuidanceResponse(spoken_text="Paso 2 completado.")
+    await coordinator.handle_user_request("Paso 2")
+    assert len(coordinator.session.conversation_history) == 2
+    assert coordinator.session.conversation_history[0]["user"] == "Paso 1"
+    assert coordinator.session.conversation_history[1]["user"] == "Paso 2"
+
+
+@pytest.mark.asyncio
 async def test_coordinator_repeat_instruction():
     mock_llm = AsyncMock(spec=LLMProvider)
     mock_vision = AsyncMock(spec=VisionProvider)
@@ -82,12 +111,10 @@ async def test_coordinator_repeat_instruction():
         tts_provider=mock_tts,
     )
 
-    # Simular una respuesta previa en sesión
     coordinator.session.last_guidance = GuidanceResponse(spoken_text="Haz clic en Insertar")
 
     response = await coordinator.handle_user_request("Repíteme el paso")
 
     assert response.spoken_text == "Haz clic en Insertar"
-    # No debe llamar al LLM clasificador para repetición inmediata
     mock_llm.classify_intent.assert_not_awaited()
     mock_tts.speak.assert_awaited_once_with("Haz clic en Insertar")

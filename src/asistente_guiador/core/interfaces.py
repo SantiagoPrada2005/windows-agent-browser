@@ -10,13 +10,13 @@ from asistente_guiador.core.models import (
 
 
 class LLMProvider(ABC):
-    """Puerto para el modelo de lenguaje de clasificación y respuesta."""
+    """Puerto para el modelo de lenguaje de clasificación y respuesta conversacional."""
 
     @abstractmethod
     async def classify_intent(
         self,
         user_query: str,
-        session_context: str | None = None,
+        session_context: list[dict] | None = None,
     ) -> IntentResult:
         """Clasifica la petición del usuario en una intención estructurada."""
         pass
@@ -26,9 +26,10 @@ class LLMProvider(ABC):
         self,
         intent: IntentResult,
         visual_result: VisualElementResult | None = None,
-        session_context: str | None = None,
+        conversation_history: list[dict] | None = None,
+        initial_context: str | None = None,
     ) -> GuidanceResponse:
-        """Genera la respuesta verbal guiada en lenguaje cotidiano."""
+        """Genera la respuesta guiada manteniendo el hilo conversacional tipo chat."""
         pass
 
 

@@ -4,7 +4,7 @@ import pytest
 
 from asistente_guiador.audio.stt import GroqWhisperSTTProvider
 from asistente_guiador.audio.tts import PiperTTSProvider
-from asistente_guiador.audio.wakeword import EnergyWakeWordDetector
+from asistente_guiador.audio.wakeword import WakeWordAudioListener
 
 
 @pytest.mark.asyncio
@@ -36,13 +36,25 @@ async def test_groq_whisper_transcription():
 
 
 @pytest.mark.asyncio
-async def test_energy_wakeword_pause_and_resume():
-    detector = EnergyWakeWordDetector()
-    assert detector.is_listening() is True
+async def test_wakeword_listener_pause_and_resume():
+    mock_stt = AsyncMock()
+    listener = WakeWordAudioListener(stt_provider=mock_stt, wake_word="hey asistente")
 
-    detector.pause()
-    assert detector.is_listening() is False
-    assert await detector.wait_for_speech() is False
+    assert listener.is_listening() is True
+    listener.pause()
+    assert listener.is_listening() is False
 
-    detector.resume()
-    assert detector.is_listening() is True
+    listener.resume()
+    assert listener.is_listening() is True
+
+
+@pytest.mark.asyncio
+async def test_wakeword_detection_match():
+    mock_stt = AsyncMock()
+    mock_stt.transcribe.return_value = "Hola, hey asistente, por favor"
+    listener = WakeWordAudioListener(stt_provider=mock_stt, wake_word="hey asistente")
+
+    with patch.object(listener, "_record_audio_window", return_value=b"fake_wav"):
+        detected = await listener.wait_for_wake_word()
+
+    assert detected is True
