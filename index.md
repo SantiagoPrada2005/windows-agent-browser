@@ -13,10 +13,10 @@ La documentación se organiza de forma jerárquica con archivos índice (`index.
 - **[Arquitectura Global y Módulos de Código (`src/index.md`)](src/index.md)**  
   Visión integral de la solución, árbol de paquetes y contratos entre capas.
   - ⚙️ **[Configuración (`src/asistente_guiador/config/index.md`)](src/asistente_guiador/config/index.md)**: Variables de entorno, perfiles y configuración centralizada (`Settings`).
-  - 🧠 **[Core del Asistente (`src/asistente_guiador/core/index.md`)](src/asistente_guiador/core/index.md)**: Modelos de dominio (`models.py`), orquestador (`AssistanceCoordinator`), estado de sesión (`SessionState`) e interfaces (`interfaces.py`).
-  - 🤖 **[Inteligencia Artificial y Modelos (`src/asistente_guiador/ai/index.md`)](src/asistente_guiador/ai/index.md)**: Clasificación de intención, generación de respuestas empáticas, prompts y proveedores externos (Groq Llama 3.3, Google Gemini Vision).
+  - 🧠 **[Core del Asistente (`src/asistente_guiador/core/index.md`)](src/asistente_guiador/core/index.md)**: Modelos de dominio (`models.py`), estado global de pantalla continuo (`GlobalScreenState`), orquestador (`AssistanceCoordinator`), estado de sesión (`SessionState`) e interfaces (`interfaces.py`).
+  - 🤖 **[Inteligencia Artificial y Modelos (`src/asistente_guiador/ai/index.md`)](src/asistente_guiador/ai/index.md)**: Clasificación de intención informada, generación de respuestas empáticas con contexto de interfaz, prompts y proveedores externos (Groq Llama 3.3, OpenRouter / DeepSeek).
   - 🎙️ **[Módulo de Audio (`src/asistente_guiador/audio/index.md`)](src/asistente_guiador/audio/index.md)**: Detección de wakeword, grabación con detector de silencio (VAD simple), transcripción (STT) y síntesis de voz (TTS).
-  - 👁️ **[Módulo de Visión y Captura (`src/asistente_guiador/vision/index.md`)](src/asistente_guiador/vision/index.md)**: Captura de pantalla multiplataforma con `mss` y optimización mediante detector de cambios significativos (SSIM / MSE).
+  - 👁️ **[Módulo de Visión y Captura (`src/asistente_guiador/vision/index.md`)](src/asistente_guiador/vision/index.md)**: Captura de pantalla multiplataforma con `mss`, detector nativo de ventana activa (`ActiveWindowDetector`) y observador continuo en memoria (`ScreenContextWatcher`).
 - 🧪 **[Suite de Pruebas Automatizadas (`tests/index.md`)](tests/index.md)**  
   Estrategia de testing unitario y de integración, mocks de proveedores y cobertura.
 

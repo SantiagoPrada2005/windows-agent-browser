@@ -6,7 +6,10 @@ import logging
 import httpx
 from PIL import Image
 
-from asistente_guiador.ai.prompts import VISION_LOCATOR_SYSTEM_PROMPT
+from asistente_guiador.ai.prompts import (
+    SCREEN_SUMMARY_SYSTEM_PROMPT,
+    VISION_LOCATOR_SYSTEM_PROMPT,
+)
 from asistente_guiador.core.interfaces import VisionProvider
 from asistente_guiador.core.models import BoundingBox, VisualElementResult
 
@@ -125,3 +128,57 @@ class OpenRouterVisionProvider(VisionProvider):
                 spatial_description="No se pudo analizar la pantalla por un error de conexión.",
                 reason=str(e),
             )
+
+    async def summarize_screen(
+        self,
+        image: Image.Image,
+        active_window: str = "Unknown",
+    ) -> str:
+        b64_image = self._encode_image(image)
+        prompt_text = (
+            f"Describe la pantalla del usuario. Ventana en primer plano: '{active_window}'."
+        )
+
+        messages = [
+            {"role": "system", "content": SCREEN_SUMMARY_SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt_text},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{b64_image}"},
+                    },
+                ],
+            },
+        ]
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://github.com/asistente-guiador",
+            "X-Title": "Asistente Guiador Ofimatica",
+        }
+
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": 0.1,
+            "response_format": {"type": "json_object"},
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                resp = await client.post(
+                    f"{self.base_url}/chat/completions",
+                    headers=headers,
+                    json=payload,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                raw_text = data["choices"][0]["message"]["content"]
+                parsed = json.loads(raw_text)
+                return str(parsed.get("summary", f"Ventana activa: {active_window}."))
+        except Exception as e:
+            logger.warning(f"Error resumiendo pantalla con OpenRouter: {e}")
+            return f"Ventana activa: {active_window}."

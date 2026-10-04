@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from PIL import Image
@@ -17,6 +17,7 @@ from asistente_guiador.core.models import (
     IntentType,
     VisualElementResult,
 )
+from asistente_guiador.vision.window_detector import ActiveWindowDetector
 
 
 class DummyCapturer(ScreenCapturer):
@@ -118,3 +119,52 @@ async def test_coordinator_repeat_instruction():
     assert response.spoken_text == "Haz clic en Insertar"
     mock_llm.classify_intent.assert_not_awaited()
     mock_tts.speak.assert_awaited_once_with("Haz clic en Insertar")
+
+
+@pytest.mark.asyncio
+async def test_coordinator_continuous_screen_context_flow():
+    mock_llm = AsyncMock(spec=LLMProvider)
+    mock_vision = AsyncMock(spec=VisionProvider)
+    mock_tts = AsyncMock(spec=TTSProvider)
+    capturer = DummyCapturer()
+
+    mock_win = MagicMock(spec=ActiveWindowDetector)
+    mock_win.get_active_window_title.return_value = "Guardar como - Word"
+
+    coordinator = AssistanceCoordinator(
+        llm_provider=mock_llm,
+        vision_provider=mock_vision,
+        screen_capturer=capturer,
+        tts_provider=mock_tts,
+        window_detector=mock_win,
+    )
+
+    coordinator.session.global_screen_state.screen_summary = (
+        "Diálogo de guardado activo solicitando confirmación."
+    )
+
+    mock_llm.classify_intent.return_value = IntentResult(
+        intent=IntentType.LOCATE_ELEMENT,
+        target="Guardar",
+        requires_visual_context=False,
+    )
+    mock_llm.generate_response.return_value = GuidanceResponse(
+        spoken_text="Haz clic en el botón Guardar abajo a la derecha."
+    )
+
+    resp = await coordinator.handle_user_request("¿Dónde le doy?")
+
+    assert "Guardar" in resp.spoken_text
+    # Verificar que classify_intent recibió screen_state
+    _, kwargs = mock_llm.classify_intent.call_args
+    assert kwargs.get("screen_state") is not None
+    assert kwargs["screen_state"].active_window_title == "Guardar como - Word"
+    assert (
+        kwargs["screen_state"].screen_summary
+        == "Diálogo de guardado activo solicitando confirmación."
+    )
+
+    # Verificar que generate_response recibió screen_state
+    _, gen_kwargs = mock_llm.generate_response.call_args
+    assert gen_kwargs.get("screen_state") is not None
+    assert gen_kwargs["screen_state"].active_window_title == "Guardar como - Word"

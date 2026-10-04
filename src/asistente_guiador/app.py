@@ -16,6 +16,8 @@ from asistente_guiador.overlay.fallback_hint import FloatingHintBanner
 from asistente_guiador.overlay.overlay import TransparentOverlayWidget
 from asistente_guiador.ui.tray import SystemTrayManager
 from asistente_guiador.vision.capture import MSSScreenCapturer
+from asistente_guiador.vision.watcher import ScreenContextWatcher
+from asistente_guiador.vision.window_detector import get_default_window_detector
 
 logger = logging.getLogger("asistente_guiador")
 
@@ -78,16 +80,31 @@ class AsistenteApp:
             energy_threshold=self.settings.wake_word_energy_threshold,
         )
 
+        self.window_detector = get_default_window_detector()
+
         # 4. Orquestador
         self.coordinator = AssistanceCoordinator(
             llm_provider=self.llm,
             vision_provider=self.vision,
             screen_capturer=self.capturer,
             tts_provider=self.tts,
+            window_detector=self.window_detector,
         )
 
         # Inicializar contexto de pantalla base
         self.coordinator.initialize_visual_context()
+
+        # Observador continuo en memoria de la pantalla
+        self.screen_watcher: ScreenContextWatcher | None = None
+        if self.settings.enable_background_screen_watcher:
+            self.screen_watcher = ScreenContextWatcher(
+                screen_capturer=self.capturer,
+                session_state=self.coordinator.session,
+                vision_provider=self.vision,
+                window_detector=self.window_detector,
+                interval_seconds=self.settings.screen_watch_interval_seconds,
+                structural_threshold=self.settings.screen_structural_change_threshold,
+            )
 
         # 5. Bandeja del sistema (Tray)
         self.tray = SystemTrayManager(self)
@@ -129,6 +146,8 @@ class AsistenteApp:
             return
         logger.info("Deteniendo componentes de AsistenteApp...")
         self._running = False
+        if hasattr(self, "screen_watcher") and self.screen_watcher:
+            self.screen_watcher.stop()
         if hasattr(self, "wake_detector"):
             self.wake_detector.stop()
         if hasattr(self, "tray"):
@@ -149,6 +168,10 @@ class AsistenteApp:
         logger.info(
             f"🎤 Bucle de escucha continuo activo. Di '{self.settings.wake_word}' para activar."
         )
+
+        # Iniciar observador de pantalla en segundo plano si está habilitado
+        if self.screen_watcher and not self.screen_watcher.is_running:
+            self.screen_watcher.start()
 
         while self._running:
             if not self.wake_detector.is_listening():

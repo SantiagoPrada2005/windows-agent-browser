@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     screen_change_threshold: float = 0.03
     screen_check_width: int = 640
     screen_check_height: int = 360
+    screen_watch_interval_seconds: float = 1.0
+    screen_structural_change_threshold: float = 0.12
+    enable_background_screen_watcher: bool = True
 
     # Audio y Wake word
     wake_word: str = "Sofia"

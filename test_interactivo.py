@@ -27,10 +27,15 @@ class InteractiveTester:
         logger.info("Tomando captura de tu pantalla real y analizando...")
         logger.info("=" * 60)
 
-        # 1. Procesar consulta con captura real, LLM y modelo de visión
+        # 1. Mostrar estado de pantalla continuo actual
+        screen_state = self.app.coordinator.session.global_screen_state
+        logger.info(f"🖥️ Ventana activa detectada: '{screen_state.active_window_title}'")
+        logger.info(f"📋 Resumen semántico en memoria: '{screen_state.screen_summary}'")
+
+        # 2. Procesar consulta con captura real, LLM y modelo de visión
         resp = await self.app.coordinator.handle_user_request(user_query)
 
-        # 2. Renderizar Halo sobre las coordenadas reales en la pantalla
+        # 3. Renderizar Halo sobre las coordenadas reales en la pantalla
         if resp.visual_highlight:
             logger.info(f"✨ ¡Elemento localizado! BoundingBox: {resp.visual_highlight}")
             logger.info(f"📍 Descripción espacial: {resp.spatial_description}")
@@ -42,12 +47,12 @@ class InteractiveTester:
             logger.info("ℹ️ No se requirió o no se encontró resaltado visual específico.")
             self.app.overlay.clear_highlight()
 
-        # 3. Mostrar banner flotante de accesibilidad
+        # 4. Mostrar banner flotante de accesibilidad
         if resp.spoken_text:
             logger.info(f'🔊 Respuesta verbal generada: "{resp.spoken_text}"')
             self.app.fallback_banner.show_hint(resp.spoken_text, duration_ms=10000)
 
-        # 4. Síntesis de voz
+        # 5. Síntesis de voz
         logger.info("Reproduciendo audio...")
         await self.app.tts.speak(resp.spoken_text)
 
@@ -61,8 +66,10 @@ def main():
     print("Ejemplos comunes:")
     print(" 1. ¿Dónde guardo este documento?")
     print(" 2. ¿Dónde está el menú Archivo?")
-    print(" 3. ¿Dónde está la opción de buscar?")
+    print(" 3. ¿Dónde está la opción de buscar o el menú de búsqueda?")
     print(" 4. ¿Cómo pongo la letra en negrita?")
+    print(" 5. ¿Qué tengo en la pantalla?")
+    print(" 6. ¿Dónde le doy?")
     print("-" * 65)
 
     examples = {
@@ -70,11 +77,13 @@ def main():
         "2": "¿Dónde está el menú Archivo?",
         "3": "¿Dónde está la opción de buscar o el menú de búsqueda?",
         "4": "¿Cómo pongo la letra en negrita?",
+        "5": "¿Qué tengo en la pantalla?",
+        "6": "¿Dónde le doy?",
     }
 
     default_query = "¿Dónde está la opción de buscar o el menú de búsqueda?"
     try:
-        prompt_msg = f"Ingresa consulta o número [1-4, o Enter para '{default_query}']: "
+        prompt_msg = f"Ingresa consulta o número [1-6, o Enter para '{default_query}']: "
         user_input = input(prompt_msg).strip()
         if user_input in examples:
             query = examples[user_input]

@@ -10,6 +10,7 @@ from asistente_guiador.ai.prompts import (
 )
 from asistente_guiador.core.interfaces import LLMProvider
 from asistente_guiador.core.models import (
+    GlobalScreenState,
     GuidanceResponse,
     IntentResult,
     IntentType,
@@ -77,10 +78,21 @@ class GroqLLMProvider(LLMProvider):
         self,
         user_query: str,
         session_context: list[dict] | None = None,
+        screen_state: GlobalScreenState | None = None,
     ) -> IntentResult:
         messages = [
             {"role": "system", "content": INTENT_ROUTER_SYSTEM_PROMPT},
         ]
+        if screen_state:
+            screen_info = (
+                f"Ventana activa: '{screen_state.active_window_title}'. "
+                f"Aplicación: '{screen_state.active_application}'. "
+                f"Estado visible: '{screen_state.screen_summary}'."
+            )
+            messages.append(
+                {"role": "system", "content": f"Contexto actual de la pantalla: {screen_info}"}
+            )
+
         if session_context:
             context_summary = json.dumps(session_context[-4:], ensure_ascii=False)
             messages.append({"role": "system", "content": f"Historial previo: {context_summary}"})
@@ -116,12 +128,23 @@ class GroqLLMProvider(LLMProvider):
         visual_result: VisualElementResult | None = None,
         conversation_history: list[dict] | None = None,
         initial_context: str | None = None,
+        screen_state: GlobalScreenState | None = None,
     ) -> GuidanceResponse:
         messages = [
             {"role": "system", "content": GUIDANCE_RESPONSE_SYSTEM_PROMPT},
         ]
 
-        if initial_context:
+        if screen_state:
+            messages.append(
+                {
+                    "role": "system",
+                    "content": (
+                        f"Estado en vivo: Ventana '{screen_state.active_window_title}' "
+                        f"({screen_state.active_application}). {screen_state.screen_summary}"
+                    ),
+                }
+            )
+        elif initial_context:
             messages.append(
                 {
                     "role": "system",

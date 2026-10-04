@@ -55,15 +55,17 @@ def check_wake_word_match(transcribed_text: str, target_wake_word: str) -> bool:
 
     # Si el target es 'sofia', añadir transcripciones comunes de Whisper ('sophia', 'sofi')
     if "sofia" in clean_target:
-        targets.update({
-            "sophia",
-            "hey sophia",
-            "oye sophia",
-            "hola sophia",
-            "sofi",
-            "hey sofi",
-            "oye sofi",
-        })
+        targets.update(
+            {
+                "sophia",
+                "hey sophia",
+                "oye sophia",
+                "hola sophia",
+                "sofi",
+                "hey sofi",
+                "oye sofi",
+            }
+        )
 
     for target in targets:
         # Búsqueda como palabra completa o frase contenida

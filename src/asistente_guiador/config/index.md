@@ -24,8 +24,12 @@ Este módulo centraliza todas las variables de entorno, configuraciones de model
 | `screen_change_threshold` | `float` | `0.03` | Umbral diferencial normalizado de cambio en pantalla. |
 | `screen_check_width` | `int` | `640` | Ancho de imagen optimizado para comprobación de cambio visual. |
 | `screen_check_height` | `int` | `360` | Alto de imagen optimizado para comprobación de cambio visual. |
+| `screen_watch_interval_seconds` | `float` | `1.0` | Intervalo en segundos del muestreo continuo de pantalla en memoria. |
+| `screen_structural_change_threshold` | `float` | `0.12` | Umbral de cambio visual extenso (>12%) para actualización del resumen semántico. |
+| `enable_background_screen_watcher` | `bool` | `True` | Habilita el hilo de monitoreo continuo de pantalla en segundo plano. |
 | `wake_word` | `str` | `"hey asistente"` | Frase de activación por voz. |
 | `stt_language` | `str` | `"es"` | Código de lenguaje para transcripción de audio. |
+
 
 ---
 

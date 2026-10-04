@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 from PIL import Image
 
 from asistente_guiador.core.models import (
+    GlobalScreenState,
     GuidanceResponse,
     IntentResult,
     VisualElementResult,
@@ -17,6 +18,7 @@ class LLMProvider(ABC):
         self,
         user_query: str,
         session_context: list[dict] | None = None,
+        screen_state: GlobalScreenState | None = None,
     ) -> IntentResult:
         """Clasifica la petición del usuario en una intención estructurada."""
         pass
@@ -28,6 +30,7 @@ class LLMProvider(ABC):
         visual_result: VisualElementResult | None = None,
         conversation_history: list[dict] | None = None,
         initial_context: str | None = None,
+        screen_state: GlobalScreenState | None = None,
     ) -> GuidanceResponse:
         """Genera la respuesta guiada manteniendo el hilo conversacional tipo chat."""
         pass
@@ -44,6 +47,15 @@ class VisionProvider(ABC):
         context: str | None = None,
     ) -> VisualElementResult:
         """Analiza la captura de pantalla para ubicar un elemento específico."""
+        pass
+
+    @abstractmethod
+    async def summarize_screen(
+        self,
+        image: Image.Image,
+        active_window: str = "Unknown",
+    ) -> str:
+        """Genera una descripción semántica global del estado de la pantalla."""
         pass
 
 

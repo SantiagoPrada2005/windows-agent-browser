@@ -64,9 +64,7 @@ def main() -> None:
     signal_timer.start(200)
 
     logger.info("Aplicación iniciada. Icono disponible en la bandeja del sistema.")
-    logger.info(
-        "ℹ️ Para finalizar: presiona Ctrl+C en esta terminal o 'Salir' en la bandeja."
-    )
+    logger.info("ℹ️ Para finalizar: presiona Ctrl+C en esta terminal o 'Salir' en la bandeja.")
 
     # Lanzar hilo en segundo plano para escuchar el micrófono y el wake word continuamente
     listener_thread = threading.Thread(

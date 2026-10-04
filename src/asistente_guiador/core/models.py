@@ -1,6 +1,26 @@
+from datetime import datetime
 from enum import StrEnum
 
 from pydantic import BaseModel, Field
+
+
+class GlobalScreenState(BaseModel):
+    """Estado global continuo de la pantalla del usuario en memoria."""
+
+    active_window_title: str = Field(
+        default="Escritorio / Desconocido",
+        description="Título de la ventana activa en primer plano",
+    )
+    active_application: str = Field(
+        default="Desconocido",
+        description="Nombre de la aplicación inferida o detectada",
+    )
+    screen_summary: str = Field(
+        default="Pantalla base en espera de análisis.",
+        description="Descripción semántica viva y comprensible de la interfaz actual",
+    )
+    last_updated: datetime = Field(default_factory=datetime.now)
+    has_structural_change: bool = False
 
 
 class IntentType(StrEnum):
